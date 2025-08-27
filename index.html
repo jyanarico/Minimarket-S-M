@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>S&M Minimarket — Prototipo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    .drawer-enter { transform: translateX(100%); opacity: 0; }
+    .drawer-enter-active { transform: translateX(0); opacity: 1; transition: all .25s ease; }
+    .drawer-exit { transform: translateX(0); opacity: 1; }
+    .drawer-exit-active { transform: translateX(100%); opacity: 0; transition: all .2s ease; }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    @media print {
+      body * { visibility: hidden; }
+      #printable, #printable * { visibility: visible; }
+      #printable { position: absolute; left: 0; top: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <!-- CONFIGURACIÓN RÁPIDA -->
+  <script>
+    const STORE_NAME = "S&M Minimarket";
+    const STORE_WHATSAPP = "51XXXXXXXXX";  // Ej: 51988996057 (incluye 51)
+    const DELIVERY_FEE = 5.0;              // Costo delivery en S/
+    const CURRENCY = "S/";                 // Moneda
+  </script>
+
+  <header class="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <!-- Logo con fallback -->
+      <img id="logoImg" alt="logo" class="w-12 h-12 rounded-lg ring-1 ring-slate-200 object-cover"
+           src="logo-sm.png" onerror="this.onerror=null; this.src='LOGO%20S%26M.png';" />
+      <div class="flex-1">
+        <h1 class="font-bold text-lg leading-tight" id="brandTitle">S&M Minimarket</h1>
+        <p class="text-xs text-slate-500">Catálogo, carrito y checkout por WhatsApp</p>
+      </div>
+      <button id="cartButton" class="relative px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[.98]">
+        <span>Carrito</span>
+        <span id="cartQtyBadge" class="absolute -top-2 -right-2 bg-rose-600 text-white text-xs w-6 h-6 grid place-content-center rounded-full shadow">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <!-- Búsqueda y filtros -->
+    <section class="mb-5 grid gap-3 md:grid-cols-[1fr_auto_auto] items-center">
+      <label class="relative block">
+        <input id="searchInput" type="search" placeholder="Buscar productos: arroz, leche, detergente…" class="w-full pl-10 pr-3 py-3 rounded-xl border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔎</span>
+      </label>
+      <div class="flex gap-2 items-center">
+        <select id="categoryFilter" class="px-3 py-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <option value="">Todas las categorías</option>
+        </select>
+        <select id="sortSelect" class="px-3 py-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <option value="relevance">Ordenar: Relevancia</option>
+          <option value="price_asc">Precio: menor a mayor</option>
+          <option value="price_desc">Precio: mayor a menor</option>
+          <option value="name_asc">Nombre: A-Z</option>
+        </select>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button id="resetBtn" class="px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50">Limpiar</button>
+        <button id="adminBtn" class="px-4 py-3 rounded-xl bg-slate-900 text-white">Modo vendedor</button>
+      </div>
+    </section>
+
+    <!-- Grid de productos -->
+    <section id="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></section>
+  </main>
+
+  <!-- Drawer Carrito / Checkout -->
+  <aside id="drawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l hidden">
+    <div class="h-full flex flex-col">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Tu pedido</h2>
+        <button id="closeDrawer" class="p-2 rounded-lg hover:bg-slate-100">✕</button>
+      </div>
+      <div class="flex-1 overflow-auto">
+        <ul id="cartList" class="divide-y"></ul>
+      </div>
+      <div class="border-t p-4 space-y-3 bg-slate-50">
+        <div class="flex justify-between text-sm"><span>Subtotal</span><span id="subtotal">S/ 0.00</span></div>
+        <div class="flex justify-between text-sm"><span>Delivery</span><span id="delivery">S/ 0.00</span></div>
+        <div class="flex justify-between font-semibold text-lg"><span>Total</span><span id="total">S/ 0.00</span></div>
+        <details class="rounded-xl bg-white p-3 border">
+          <summary class="cursor-pointer font-medium">Datos de entrega</summary>
+          <form id="checkoutForm" class="mt-3 grid gap-2">
+            <input required id="c_name" placeholder="Nombre y apellido" class="px-3 py-2 rounded-lg border" />
+            <input required id="c_phone" placeholder="Celular (ej. 9XXXXXXXX)" class="px-3 py-2 rounded-lg border" />
+            <input required id="c_address" placeholder="Dirección completa" class="px-3 py-2 rounded-lg border" />
+            <input id="c_ref" placeholder="Referencia (opcional)" class="px-3 py-2 rounded-lg border" />
+            <div class="grid grid-cols-2 gap-2">
+              <label class="text-sm">Entrega
+                <select id="c_time" class="w-full px-3 py-2 rounded-lg border">
+                  <option value="Lo antes posible">Lo antes posible</option>
+                  <option value="10:00-12:00">10:00-12:00</option>
+                  <option value="12:00-14:00">12:00-14:00</option>
+                  <option value="16:00-18:00">16:00-18:00</option>
+                  <option value="18:00-20:00">18:00-20:00</option>
+                </select>
+              </label>
+              <label class="text-sm">Pago
+                <select id="c_pay" class="w-full px-3 py-2 rounded-lg border">
+                  <option>Efectivo</option>
+                  <option>Yape/Plin</option>
+                  <option>Transferencia</option>
+                </select>
+              </label>
+            </div>
+          </form>
+        </details>
+        <div class="grid gap-2 md:grid-cols-2">
+          <button id="printBtn" class="px-3 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-100">Imprimir</button>
+          <button id="waBtn" class="px-3 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Enviar por WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Modal Vendedor -->
+  <dialog id="adminModal" class="rounded-2xl p-0 w-full max-w-2xl">
+    <div class="p-4 border-b flex items-center justify-between">
+      <h3 class="font-semibold">Catálogo (modo vendedor)</h3>
+      <form method="dialog"><button class="p-2 rounded-lg hover:bg-slate-100">✕</button></form>
+    </div>
+    <div class="p-4 space-y-3 max-h-[70vh] overflow-auto">
+      <div class="grid md:grid-cols-2 gap-3">
+        <input id="new_name" placeholder="Nombre" class="px-3 py-2 rounded-lg border" />
+        <input id="new_price" type="number" min="0" step="0.01" placeholder="Precio" class="px-3 py-2 rounded-lg border" />
+        <input id="new_unit" placeholder="Unidad (kg, lt, und)" class="px-3 py-2 rounded-lg border" />
+        <input id="new_cat" placeholder="Categoría" class="px-3 py-2 rounded-lg border" />
+        <input id="new_img" placeholder="URL imagen (opcional)" class="px-3 py-2 rounded-lg border col-span-full" />
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button id="importBtn" class="px-3 py-2 rounded-lg border">Importar JSON</button>
+        <button id="exportBtn" class="px-3 py-2 rounded-lg border">Exportar JSON</button>
+        <button id="addBtn" class="px-4 py-2 rounded-lg bg-slate-900 text-white">Agregar producto</button>
+      </div>
+      <ul id="adminList" class="divide-y"></ul>
+    </div>
+  </dialog>
+
+  <!-- Ticket imprimible (oculto) -->
+  <div id="printable" class="hidden p-6">
+    <div class="max-w-md mx-auto">
+      <h2 class="text-xl font-bold" id="p_store">S&M Minimarket</h2>
+      <p class="text-sm text-slate-500">Pedido</p>
+      <hr class="my-3" />
+      <div id="p_items" class="text-sm"></div>
+      <hr class="my-3" />
+      <div id="p_totals" class="text-sm"></div>
+      <hr class="my-3" />
+      <div id="p_customer" class="text-sm"></div>
+    </div>
+  </div>
+
+  <script>
+    const initialCatalog = [
+      {id: 'arroz-costeño-1kg', name: 'Arroz Costeño 1kg', price: 5.8, unit: 'kg', category: 'Granos', img: ''},
+      {id: 'azucar-rubia-1kg', name: 'Azúcar Rubia 1kg', price: 4.5, unit: 'kg', category: 'Abarrotes', img: ''},
+      {id: 'aceite-vegetal-1lt', name: 'Aceite Vegetal 1L', price: 9.9, unit: 'lt', category: 'Abarrotes', img: ''},
+      {id: 'leche-gloria-evaporada', name: 'Leche Gloria Evaporada', price: 4.2, unit: 'lata', category: 'Lácteos', img: ''},
+      {id: 'huevos-docena', name: 'Huevos Docena', price: 12.0, unit: 'doc', category: 'Frescos', img: ''},
+      {id: 'fideos-tallarin-500g', name: 'Fideos Tallarín 500g', price: 3.8, unit: 'paquete', category: 'Abarrotes', img: ''},
+      {id: 'atun-aceite-170g', name: 'Atún en Aceite 170g', price: 6.0, unit: 'lata', category: 'Conservas', img: ''},
+      {id: 'lenteja-500g', name: 'Lenteja 500g', price: 4.0, unit: 'paquete', category: 'Granos', img: ''},
+      {id: 'detergente-bolsa-800g', name: 'Detergente 800g', price: 7.5, unit: 'bolsa', category: 'Limpieza', img: ''},
+      {id: 'jabon-de-tocador', name: 'Jabón de Tocador', price: 2.8, unit: 'unidad', category: 'Aseo Personal', img: ''},
+      {id: 'papel-higienico-4', name: 'Papel Higiénico 4 rollos', price: 6.5, unit: 'pack', category: 'Aseo Personal', img: ''},
+      {id: 'escoba', name: 'Escoba', price: 9.0, unit: 'unidad', category: 'Limpieza', img: ''},
+      {id: 'gaseosa-1-5lt', name: 'Gaseosa 1.5L', price: 7.0, unit: 'botella', category: 'Bebidas', img: ''},
+      {id: 'agua-625ml', name: 'Agua 625ml', price: 2.5, unit: 'botella', category: 'Bebidas', img: ''},
+      {id: 'arandanos-125g', name: 'Arándanos 125g', price: 6.9, unit: 'bandeja', category: 'Frutas', img: ''},
+      {id: 'platanos-1kg', name: 'Plátanos 1kg', price: 4.5, unit: 'kg', category: 'Frutas', img: ''}
+    ];
+
+    const state = {
+      catalog: JSON.parse(localStorage.getItem('catalog') || 'null') || initialCatalog,
+      cart: JSON.parse(localStorage.getItem('cart') || '{}'),
+      query: '',
+      category: '',
+      sort: 'relevance'
+    };
+
+    const fmt = n => `${CURRENCY} ${n.toFixed(2)}`;
+    const el = sel => document.querySelector(sel);
+
+    function save() {
+      localStorage.setItem('catalog', JSON.stringify(state.catalog));
+      localStorage.setItem('cart', JSON.stringify(state.cart));
+    }
+
+    function categoriesFromCatalog() {
+      return [...new Set(state.catalog.map(p => p.category))].sort();
+    }
+
+    function filteredProducts() {
+      const q = state.query.trim().toLowerCase();
+      let items = state.catalog.filter(p =>
+        (!state.category || p.category === state.category) &&
+        (!q || (p.name.toLowerCase().includes(q) || p.id.includes(q)))
+      );
+      switch(state.sort){
+        case 'price_asc': items.sort((a,b)=>a.price-b.price); break;
+        case 'price_desc': items.sort((a,b)=>b.price-a.price); break;
+        case 'name_asc': items.sort((a,b)=>a.name.localeCompare(b.name)); break;
+      }
+      return items;
+    }
+
+    function renderCategories(){
+      const sel = el('#categoryFilter');
+      sel.innerHTML = '<option value=\"\">Todas las categorías</option>' +
+        categoriesFromCatalog().map(c=>`<option>${c}</option>`).join('');
+      sel.value = state.category;
+    }
+
+    function productImage(p){
+      if(p.img) return `<img src="${p.img}" alt="${p.name}" class="w-full h-28 object-cover rounded-lg" onerror="this.remove()"/>`;
+      const initials = p.name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+      const bg = encodeURIComponent('#0ea5e9');
+      const svg = `data:image/svg+xml;utf8,`
+      + `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='160'>`
+      + `<rect width='100%' height='100%' rx='10' fill='${bg}'/>`
+      + `<text x='50%' y='55%' text-anchor='middle' font-size='42' font-family='Arial' fill='white'>${initials}</text>`
+      + `</svg>`;
+      return `<img src="${svg}" alt="${p.name}" class="w-full h-28 object-cover rounded-lg"/>`;
+    }
+
+    function renderGrid(){
+      const container = el('#grid');
+      const products = filteredProducts();
+      container.innerHTML = products.map(p => `
+        <article class="bg-white rounded-2xl border p-3 shadow-sm flex flex-col">
+          ${productImage(p)}
+          <div class="mt-3 flex-1">
+            <h3 class="font-semibold leading-snug">${p.name}</h3>
+            <p class="text-sm text-slate-500">${p.category} • ${p.unit}</p>
+          </div>
+          <div class="mt-2 flex items-center justify-between">
+            <span class="font-bold text-emerald-700">${fmt(p.price)}</span>
+            <div class="flex items-center gap-2">
+              <button class="px-3 py-2 rounded-lg border" onclick="addToCart('${p.id}', -1)">–</button>
+              <span id="qty-${p.id}" class="min-w-[2ch] text-center">${state.cart[p.id]?.qty||0}</span>
+              <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white" onclick="addToCart('${p.id}', 1)">Agregar</button>
+            </div>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function addToCart(id, delta=1){
+      const p = state.catalog.find(x=>x.id===id);
+      if(!p) return;
+      const item = state.cart[id] || { id, name:p.name, price:p.price, qty:0 };
+      item.qty = Math.max(0, (item.qty||0) + delta);
+      if(item.qty===0) delete state.cart[id]; else state.cart[id] = item;
+      save();
+      renderGrid();
+      renderCart();
+    }
+
+    function cartItems(){ return Object.values(state.cart); }
+
+    function cartTotals(){
+      const sub = cartItems().reduce((a,i)=>a+i.price*i.qty, 0);
+      const del = cartItems().length? DELIVERY_FEE : 0;
+      return { subtotal: sub, delivery: del, total: sub+del };
+    }
+
+    function renderCart(){
+      const list = el('#cartList');
+      const items = cartItems();
+      const badge = el('#cartQtyBadge');
+      const {subtotal, delivery, total} = cartTotals();
+      badge.textContent = items.reduce((a,i)=>a+i.qty,0);
+      el('#subtotal').textContent = fmt(subtotal);
+      el('#delivery').textContent = fmt(delivery);
+      el('#total').textContent = fmt(total);
+
+      list.innerHTML = items.length ? items.map(i=>`
+        <li class="p-3 flex items-center gap-3">
+          <div class="flex-1">
+            <p class="font-medium">${i.name}</p>
+            <p class="text-sm text-slate-500">${fmt(i.price)} c/u</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="px-2 py-1 rounded-lg border" onclick="addToCart('${i.id}', -1)">–</button>
+            <span class="w-6 text-center">${i.qty}</span>
+            <button class="px-2 py-1 rounded-lg border" onclick="addToCart('${i.id}', 1)">+</button>
+          </div>
+          <div class="w-20 text-right font-semibold">${fmt(i.price*i.qty)}</div>
+          <button class="ml-2 text-rose-600" title="Eliminar" onclick="removeItem('${i.id}')">🗑️</button>
+        </li>
+      `).join('') : `<div class="p-6 text-center text-slate-500">Tu carrito está vacío.</div>`;
+    }
+
+    function removeItem(id){ delete state.cart[id]; save(); renderGrid(); renderCart(); }
+
+    function getCustomer(){
+      return {
+        name: el('#c_name').value.trim(),
+        phone: el('#c_phone').value.trim(),
+        address: el('#c_address').value.trim(),
+        ref: el('#c_ref').value.trim(),
+        time: el('#c_time').value,
+        pay: el('#c_pay').value
+      };
+    }
+
+    function validateCustomer(c){ return !!(c.name && c.phone && c.address); }
+
+    function orderMessage(){
+      const items = cartItems();
+      const {subtotal, delivery, total} = cartTotals();
+      const c = getCustomer();
+      let lines = [];
+      lines.push(`*${STORE_NAME}* — *Nuevo pedido*\\n`);
+      lines.push(`*Cliente:* ${c.name}\\n*Celular:* ${c.phone}`);
+      lines.push(`*Dirección:* ${c.address}${c.ref? `\\n*Ref:* ${c.ref}`: ''}`);
+      lines.push(`*Entrega:* ${c.time} \\n*Pago:* ${c.pay}`);
+      lines.push(`\\n*Productos:*`);
+      items.forEach(i=>lines.push(`• ${i.qty} x ${i.name} — ${fmt(i.price*i.qty)}`));
+      lines.push(`\\n*Subtotal:* ${fmt(subtotal)}`);
+      lines.push(`*Delivery:* ${fmt(delivery)}`);
+      lines.push(`*TOTAL:* ${fmt(total)}`);
+      return lines.join('\\n');
+    }
+
+    function sendWhatsApp(){
+      const items = cartItems();
+      if(!items.length){ alert('Tu carrito está vacío.'); return; }
+      const c = getCustomer();
+      if(!validateCustomer(c)){ alert('Completa nombre, celular y dirección.'); return; }
+      const text = encodeURIComponent(orderMessage());
+      const url = `https://wa.me/${STORE_WHATSAPP}?text=${text}`;
+      window.open(url, '_blank');
+    }
+
+    function printOrder(){
+      const items = cartItems();
+      if(!items.length){ alert('Tu carrito está vacío.'); return; }
+      const c = getCustomer();
+      if(!validateCustomer(c)){ alert('Completa nombre, celular y dirección.'); return; }
+      el('#p_store').textContent = STORE_NAME;
+      const {subtotal, delivery, total} = cartTotals();
+      el('#p_items').innerHTML = items.map(i=>`<div class='flex justify-between'><span>${i.qty} x ${i.name}</span><span>${fmt(i.price*i.qty)}</span></div>`).join('');
+      el('#p_totals').innerHTML = `
+        <div class='flex justify-between'><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
+        <div class='flex justify-between'><span>Delivery</span><span>${fmt(delivery)}</span></div>
+        <div class='flex justify-between font-semibold'><span>Total</span><span>${fmt(total)}</span></div>`;
+      el('#p_customer').innerHTML = `
+        <div>Cliente: ${c.name}</div>
+        <div>Celular: ${c.phone}</div>
+        <div>Dirección: ${c.address}</div>
+        ${c.ref? `<div>Ref: ${c.ref}</div>`: ''}
+        <div>Entrega: ${c.time}</div>
+        <div>Pago: ${c.pay}</div>`;
+      window.print();
+    }
+
+    function renderAdminList(){
+      const ul = el('#adminList');
+      ul.innerHTML = state.catalog.map((p,idx)=>`
+        <li class="py-2 flex items-center gap-3">
+          <div class="flex-1">
+            <div class="font-medium">${p.name}</div>
+            <div class="text-xs text-slate-500">${p.category} • ${p.unit}</div>
+          </div>
+          <div class="w-24 text-right">${fmt(p.price)}</div>
+          <button class="px-2 py-1 text-rose-600" onclick="deleteProduct(${idx})">Eliminar</button>
+        </li>`).join('');
+    }
+
+    function deleteProduct(i){
+      state.catalog.splice(i,1); save(); renderCategories(); renderGrid(); renderAdminList();
+    }
+
+    function addProduct(){
+      const name = el('#new_name').value.trim();
+      const price = parseFloat(el('#new_price').value);
+      const unit = el('#new_unit').value.trim() || 'unidad';
+      const category = el('#new_cat').value.trim() || 'Otros';
+      const img = el('#new_img').value.trim();
+      if(!name || isNaN(price)){ alert('Nombre y precio son obligatorios'); return; }
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+      const prod = {id, name, price, unit, category, img};
+      state.catalog.push(prod); save();
+      el('#new_name').value = el('#new_price').value = el('#new_unit').value = el('#new_cat').value = el('#new_img').value = '';
+      renderCategories(); renderGrid(); renderAdminList();
+    }
+
+    function exportCatalog(){
+      const data = JSON.stringify(state.catalog, null, 2);
+      const blob = new Blob([data], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'catalogo.json'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    function importCatalog(){
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.json,application/json';
+      input.onchange = (e)=>{
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          try { const arr = JSON.parse(reader.result);
+            if(Array.isArray(arr)) { state.catalog = arr; save(); renderCategories(); renderGrid(); renderAdminList(); }
+            else alert('JSON inválido');
+          } catch(err){ alert('No se pudo leer el JSON'); }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+
+    function openDrawer(){ el('#drawer').classList.remove('hidden'); }
+    function closeDrawer(){ el('#drawer').classList.add('hidden'); }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      el('#brandTitle').textContent = STORE_NAME;
+
+      renderCategories();
+      renderGrid();
+      renderCart();
+
+      el('#searchInput').addEventListener('input', (e)=>{ state.query = e.target.value; renderGrid(); });
+      el('#categoryFilter').addEventListener('change', (e)=>{ state.category = e.target.value; renderGrid(); });
+      el('#sortSelect').addEventListener('change', (e)=>{ state.sort = e.target.value; renderGrid(); });
+      el('#resetBtn').addEventListener('click', ()=>{ state.query=''; state.category=''; state.sort='relevance'; el('#searchInput').value=''; renderCategories(); renderGrid(); });
+
+      el('#cartButton').addEventListener('click', openDrawer);
+      el('#closeDrawer').addEventListener('click', closeDrawer);
+
+      el('#waBtn').addEventListener('click', sendWhatsApp);
+      el('#printBtn').addEventListener('click', printOrder);
+
+      el('#adminBtn').addEventListener('click', ()=>{ renderAdminList(); document.querySelector('#adminModal').showModal(); });
+      el('#addBtn').addEventListener('click', addProduct);
+      el('#exportBtn').addEventListener('click', exportCatalog);
+      el('#importBtn').addEventListener('click', importCatalog);
+
+      ['c_name','c_phone','c_address','c_ref','c_time','c_pay'].forEach(id=>{
+        const inp = el('#'+id); const saved = localStorage.getItem('cust_'+id);
+        if(saved) inp.value = saved;
+        inp.addEventListener('input', ()=> localStorage.setItem('cust_'+id, inp.value));
+      });
+    });
+
+    window.addToCart = addToCart;
+    window.removeItem = removeItem;
+    window.deleteProduct = deleteProduct;
+  </script>
+</body>
+</html>
